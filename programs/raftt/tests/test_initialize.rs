@@ -1,68 +1,118 @@
-
 use {
-    anchor_lang::{
-        prelude::Pubkey,
-        solana_program::{instruction::Instruction, system_program},
-        AccountDeserialize, InstructionData, ToAccountMetas,
-    },
-    solana_program_test::{processor, ProgramTest},
-    solana_sdk::{
-        account::Account,
-        signature::Keypair,
-        signer::Signer,
-        transaction::Transaction,
-    },
+    anchor_lang::{system_program, AccountDeserialize, InstructionData, ToAccountMetas},
+    litesvm::LiteSVM,
+    solana_instruction::Instruction,
+    solana_keypair::Keypair,
+    solana_pubkey::Pubkey,
+    solana_signer::Signer,
+    solana_transaction::Transaction,
 };
 
-#[tokio::test]
-async fn test_initialize() {
-    let program_id = raftt::id();
+fn setup() -> (LiteSVM, Keypair) {
+    let mut svm = LiteSVM::new();
+    svm.add_program_from_file(
+        raftt::ID,
+        concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/deploy/raftt.so"),
+    )
+    .unwrap();
+
     let payer = Keypair::new();
-    let target_amount = 2_000_000;
-    let (offering, bump) = Pubkey::find_program_address(
-        &[b"offering", payer.pubkey().as_ref()],
-        &program_id,
-    );
+    svm.airdrop(&payer.pubkey(), 1_000_000_000).unwrap();
+    (svm, payer)
+}
 
-    let mut program_test = ProgramTest::new("raftt", program_id, processor!(raftt::entrypoint));
-    program_test.add_account(
-        payer.pubkey(),
-        Account {
-            lamports: 1_000_000_000,
-            data: vec![],
-            owner: solana_sdk::system_program::id(),
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
+fn offering_pda(user: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[b"offering", user.as_ref()], &raftt::ID)
+}
 
-    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
-
-    let instruction = Instruction::new_with_bytes(
-        program_id,
-        &raftt::instruction::Initialize { target_amount }.data(),
-        raftt::accounts::Initialize {
-            user: payer.pubkey(),
+fn initialize_ix(user: Pubkey, offering: Pubkey, target_amount: u64) -> Instruction {
+    Instruction {
+        program_id: raftt::ID,
+        accounts: raftt::accounts::Initialize {
+            user,
             offering,
             system_program: system_program::ID,
         }
         .to_account_metas(None),
-    );
+        data: raftt::instruction::Initialize { target_amount }.data(),
+    }
+}
 
-    let tx = Transaction::new_signed_with_payer(
-        &[instruction],
+fn tx_for(svm: &LiteSVM, payer: &Keypair, ix: Instruction) -> Transaction {
+    Transaction::new_signed_with_payer(
+        &[ix],
         Some(&payer.pubkey()),
-        &[&payer],
-        recent_blockhash,
-    );
+        &[payer],
+        svm.latest_blockhash(),
+    )
+}
 
-    banks_client.process_transaction(tx).await.unwrap();
+#[test]
+fn test_initialize() {
+    let (mut svm, payer) = setup();
+    let target_amount: u64 = 2_000_000;
+    let (offering, bump) = offering_pda(&payer.pubkey());
 
-    let offering_account = banks_client.get_account(offering).await.unwrap().unwrap();
-    let mut data: &[u8] = &offering_account.data;
-    let offering_state = raftt::state::Offering::try_deserialize(&mut data).unwrap();
-    assert_eq!(offering_state.authority, payer.pubkey());
-    assert_eq!(offering_state.target_amount, target_amount);
-    assert_eq!(offering_state.raised_amount, 0);
-    assert_eq!(offering_state.bump, bump);
+    let tx = tx_for(&svm, &payer, initialize_ix(payer.pubkey(), offering, target_amount));
+    svm.send_transaction(tx)
+        .unwrap_or_else(|e| panic!("transação falhou: {e:#?}"));
+
+    let account = svm
+        .get_account(&offering)
+        .expect("conta offering não foi criada");
+    assert_eq!(account.owner, raftt::ID);
+    let state = raftt::state::Offering::try_deserialize(&mut account.data.as_slice()).unwrap();
+
+    assert_eq!(state.authority, payer.pubkey());
+    assert_eq!(state.target_amount, target_amount);
+    assert_eq!(state.raised_amount, 0);
+    assert_eq!(state.bump, bump);
+}
+
+#[test]
+fn test_initialize_twice_fails() {
+    let (mut svm, payer) = setup();
+    let (offering, _) = offering_pda(&payer.pubkey());
+
+    let tx = tx_for(&svm, &payer, initialize_ix(payer.pubkey(), offering, 2_000_000));
+    svm.send_transaction(tx).unwrap();
+
+    // target_amount diferente para a transação não ser tratada como duplicada
+    let tx = tx_for(&svm, &payer, initialize_ix(payer.pubkey(), offering, 3_000_000));
+    let err = svm.send_transaction(tx).unwrap_err();
+    let logs = err.meta.logs.join("\n");
+    assert!(logs.contains("already in use"), "falhou por outro motivo:\n{logs}");
+
+    // o estado original não pode ter sido sobrescrito
+    let account = svm.get_account(&offering).unwrap();
+    let state = raftt::state::Offering::try_deserialize(&mut account.data.as_slice()).unwrap();
+    assert_eq!(state.target_amount, 2_000_000);
+}
+
+#[test]
+fn test_initialize_wrong_pda_fails() {
+    let (mut svm, payer) = setup();
+    let fake_offering = Pubkey::new_unique();
+
+    let tx = tx_for(&svm, &payer, initialize_ix(payer.pubkey(), fake_offering, 2_000_000));
+
+    let err = svm.send_transaction(tx).unwrap_err();
+    let logs = err.meta.logs.join("\n");
+    assert!(logs.contains("ConstraintSeeds"), "falhou por outro motivo:\n{logs}");
+
+    assert!(svm.get_account(&fake_offering).is_none());
+}
+#[test]
+fn test_initialize_zero_target_fails() {
+    let (mut svm, payer) = setup();
+    let (offering, _) = offering_pda(&payer.pubkey());
+
+    let tx = tx_for(&svm, &payer, initialize_ix(payer.pubkey(), offering, 0));
+
+    let err = svm.send_transaction(tx).unwrap_err();
+    let logs = err.meta.logs.join("\n");
+    assert!(logs.contains("InvalidTargetAmount"), "falhou por outro motivo:\n{logs}");
+
+    // nenhuma conta pode ter sido criada
+    assert!(svm.get_account(&offering).is_none());
 }
