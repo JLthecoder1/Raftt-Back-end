@@ -18,4 +18,8 @@ pub mod raftt {
     pub fn initialize(ctx: Context<Initialize>, target_amount: u64) -> Result<()> {
         crate::instructions::initialize::handle_initialize(ctx, target_amount)
     }
+
+    pub fn invest(ctx: Context<Invest>, amount: u64) -> Result<()> {
+        crate::instructions::invest::handle_invest(ctx, amount)
+    }
 }

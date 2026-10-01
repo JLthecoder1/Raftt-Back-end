@@ -4,8 +4,11 @@ use anchor_lang::prelude::*;
 #[derive(InitSpace)]
 
 pub struct Offering {
-    pub authority: Pubkey,   // Quem criou a oferta (o emissor)
-    pub target_amount: u64,  // A meta de captação desejada
-    pub raised_amount: u64,  // O quanto já foi investido até ao momento
-    pub bump: u8,            // O identificador de segurança da conta (bump seed)
+    pub authority: Pubkey,
+    pub mint: Pubkey,        // Novo: Token aceito (dólar SPL)
+    pub target_amount: u64,
+    pub raised_amount: u64,
+    pub is_closed: bool,     // Novo: Indica se a oferta fechou
+    pub vault: Pubkey,       // Novo: Endereço do cofre PDA
+    pub bump: u8,
 }
