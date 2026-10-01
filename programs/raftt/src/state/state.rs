@@ -12,3 +12,12 @@ pub struct Offering {
     pub vault: Pubkey,       // Novo: Endereço do cofre PDA
     pub bump: u8,
 }
+
+#[account]
+#[derive(InitSpace)]
+pub struct Position {
+    pub offering: Pubkey,
+    pub investor: Pubkey,
+    pub amount: u64,
+    pub bump: u8,
+}
