@@ -22,4 +22,12 @@ pub mod raftt {
     pub fn invest(ctx: Context<Invest>, amount: u64) -> Result<()> {
         crate::instructions::invest::handle_invest(ctx, amount)
     }
+
+    pub fn refund(ctx: Context<Refund>) -> Result<()> {
+        crate::instructions::refund::handle_refund(ctx)
+    }
+
+    pub fn fail_offering(ctx: Context<FailOffering>) -> Result<()> {
+        crate::instructions::fail_offering::handle_fail_offering(ctx)
+    }
 }

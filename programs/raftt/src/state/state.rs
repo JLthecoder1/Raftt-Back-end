@@ -8,7 +8,8 @@ pub struct Offering {
     pub mint: Pubkey,        // Novo: Token aceito (dólar SPL)
     pub target_amount: u64,
     pub raised_amount: u64,
-    pub is_closed: bool,     // Novo: Indica se a oferta fechou
+    pub is_closed: bool,
+    pub is_failed: bool,     // Novo: Indica se a oferta fechou
     pub vault: Pubkey,       // Novo: Endereço do cofre PDA
     pub bump: u8,
 }

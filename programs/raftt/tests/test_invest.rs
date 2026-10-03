@@ -112,7 +112,9 @@ struct TestContext {
     investor_token_account: Keypair,
     offering: Pubkey,
     vault: Pubkey,
+    position: Pubkey,
 }
+
 
 
 impl TestContext {
@@ -174,6 +176,11 @@ impl TestContext {
             &raftt::ID,
         );
 
+        let (position, _) = Pubkey::find_program_address(
+            &[b"position", offering.as_ref(), payer.pubkey().as_ref()],
+            &raftt::ID,
+    );
+
         let mut ctx = Self {
             svm,
             payer,
@@ -181,10 +188,10 @@ impl TestContext {
             investor_token_account,
             offering,
             vault,
+            position,
         };
 
         ctx.initialize(target_amount);
-
         ctx
     }
 
@@ -227,8 +234,10 @@ impl TestContext {
                 investor_token_account: self.investor_token_account.pubkey(),
                 mint: self.mint.pubkey(),
                 offering: self.offering,
+                position: self.position,
                 vault: self.vault,
                 token_program: TOKEN_PROGRAM_ID,
+                system_program: anchor_lang::system_program::ID,
             }
             .to_account_metas(None),
             data: raftt::instruction::Invest {
@@ -249,6 +258,58 @@ impl TestContext {
         );
 
         self.svm.send_transaction(tx).map(|_| ())
+    }
+
+    fn send_fail_offering(&mut self) {
+    let ix = raftt::instruction::FailOffering {};
+
+    let accounts = raftt::accounts::FailOffering {
+        offering: self.offering,
+        authority: self.payer.pubkey(),
+    };
+
+    let instruction = Instruction {
+        program_id: raftt::ID,
+        accounts: accounts.to_account_metas(None),
+        data: ix.data(),
+    };
+
+    let tx = Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&self.payer.pubkey()),
+        &[&self.payer],
+        self.svm.latest_blockhash(),
+    );
+
+    self.svm.send_transaction(tx).unwrap();
+}
+
+    fn send_refund(&mut self) {
+        let ix = raftt::instruction::Refund {};
+
+        let accounts = raftt::accounts::Refund {
+            investor: self.payer.pubkey(),
+            offering: self.offering,
+            position: self.position,
+            vault: self.vault,
+            investor_token_account: self.investor_token_account.pubkey(),
+            token_program: TOKEN_PROGRAM_ID,
+        };
+
+        let instruction = Instruction {
+            program_id: raftt::ID,
+            accounts: accounts.to_account_metas(None),
+            data: ix.data(),
+        };
+
+        let tx = Transaction::new_signed_with_payer(
+            &[instruction],
+            Some(&self.payer.pubkey()),
+            &[&self.payer],
+            self.svm.latest_blockhash(),
+        );
+
+        self.svm.send_transaction(tx).unwrap();
     }
 }
 
@@ -301,6 +362,16 @@ fn test_invest() {
         &raftt::ID,
     );
 
+    let (position, _) = Pubkey::find_program_address(
+        &[
+            b"position",
+            offering.as_ref(),
+            payer.pubkey().as_ref(),
+        ],
+    &raftt::ID,
+);
+
+
 
     let initialize_ix = Instruction {
         program_id: raftt::ID,
@@ -328,7 +399,9 @@ fn test_invest() {
             mint: mint.pubkey(),
             offering,
             vault,
+            position,
             token_program: TOKEN_PROGRAM_ID,
+            system_program: anchor_lang::system_program::ID,
         }
         .to_account_metas(None),
         data: raftt::instruction::Invest {
@@ -458,4 +531,55 @@ fn test_invest_twice_then_complete() {
             .unwrap();
 
     assert_eq!(vault_token.amount, 500_000);
+
+
+    let position_account = ctx
+    .svm
+    .get_account(&ctx.position)
+    .expect("position não encontrada");
+
+    let mut position_data = position_account.data.as_slice();
+
+    let position_state =
+        raftt::state::Position::try_deserialize(&mut position_data)
+        .expect("falha ao desserializar position");
+
+    assert_eq!(position_state.offering, ctx.offering);
+    assert_eq!(position_state.investor, ctx.payer.pubkey());
+    assert_eq!(position_state.amount, 500_000);
+}
+
+#[test]
+fn test_refund() {
+    let mut ctx = TestContext::new(500_000, 500_000);
+
+    ctx.send_invest(300_000).unwrap();
+    ctx.send_fail_offering();
+    ctx.send_refund();
+
+    let position_account = ctx
+        .svm
+        .get_account(&ctx.position)
+        .expect("position não encontrada");
+
+    let mut position_data = position_account.data.as_slice();
+
+    let position_state =
+        raftt::state::Position::try_deserialize(&mut position_data)
+            .expect("falha ao desserializar position");
+
+    assert_eq!(position_state.amount, 0);
+
+    let vault_account = ctx
+        .svm
+        .get_account(&ctx.vault)
+        .expect("vault não encontrada");
+
+    let mut vault_data = vault_account.data.as_slice();
+
+    let vault_token =
+        TokenAccount::try_deserialize(&mut vault_data)
+            .expect("falha ao ler vault");
+
+    assert_eq!(vault_token.amount, 0);
 }

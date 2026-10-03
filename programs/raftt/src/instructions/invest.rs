@@ -1,6 +1,9 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Mint, TransferChecked};
-use crate::{error::ErrorCode, state::Offering};
+use crate::{
+    error::ErrorCode,
+    state::{Offering, Position},
+};
 
 #[derive(Accounts)]
 pub struct Invest<'info> {
@@ -30,6 +33,15 @@ pub struct Invest<'info> {
     )]
     pub offering: Account<'info, Offering>,
 
+    #[account(
+        init_if_needed,
+        payer = investor,
+        space = 8 + Position::INIT_SPACE,
+        seeds = [b"position", offering.key().as_ref(), investor.key().as_ref()],
+        bump
+    )]
+    pub position: Account<'info, Position>,
+
     /// O cofre PDA para onde os tokens vão
     #[account(
         mut,
@@ -38,8 +50,9 @@ pub struct Invest<'info> {
         constraint = vault.owner == offering.key(),
     )]
     pub vault: Account<'info, TokenAccount>,
-
     pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
+    
 }
 
 pub fn handle_invest(ctx: Context<Invest>, amount: u64) -> Result<()> {
@@ -71,6 +84,17 @@ pub fn handle_invest(ctx: Context<Invest>, amount: u64) -> Result<()> {
     // Usa as decimais corretas da conta Mint
     token::transfer_checked(cpi_ctx, amount, ctx.accounts.mint.decimals)?;
 
+    let position = &mut ctx.accounts.position;
+
+    position.offering = offering.key();
+    position.investor = ctx.accounts.investor.key();
+
+    position.amount = position
+        .amount
+        .checked_add(amount)
+        .ok_or(ErrorCode::NumericalOverflow)?;
+
+    position.bump = ctx.bumps.position;
     // Atualiza o estado da oferta
     offering.raised_amount = new_raised;
 

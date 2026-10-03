@@ -16,4 +16,10 @@ pub enum ErrorCode {
     
     #[msg("Erro de overflow numérico.")]
     NumericalOverflow,
+
+    #[msg("Esta oferta não está disponível para reembolso.")]
+    OfferingNotFailed,
+
+    #[msg("Esta oferta já foi marcada como falha.")]
+    OfferingAlreadyFailed,
 }

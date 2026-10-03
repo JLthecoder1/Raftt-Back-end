@@ -47,6 +47,7 @@ pub fn handle_initialize(ctx: Context<Initialize>, target_amount: u64) -> Result
     offering.target_amount = target_amount;
     offering.raised_amount = 0;
     offering.is_closed = false;
+    offering.is_failed = false;
     offering.vault = ctx.accounts.vault.key();
     offering.bump = ctx.bumps.offering;
 
