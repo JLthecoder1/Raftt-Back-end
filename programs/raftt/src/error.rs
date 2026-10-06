@@ -22,4 +22,10 @@ pub enum ErrorCode {
 
     #[msg("Esta oferta já foi marcada como falha.")]
     OfferingAlreadyFailed,
+
+    #[msg("A oferta ainda não atingiu a meta.")]
+    OfferingNotCompleted,
+
+    #[msg("Os fundos desta oferta já foram liberados.")]
+    OfferingAlreadyReleased,
 }

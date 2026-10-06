@@ -30,4 +30,8 @@ pub mod raftt {
     pub fn fail_offering(ctx: Context<FailOffering>) -> Result<()> {
         crate::instructions::fail_offering::handle_fail_offering(ctx)
     }
+
+    pub fn release(ctx: Context<Release>) -> Result<()> {
+        crate::instructions::release::handle_release(ctx)
+    }
 }
