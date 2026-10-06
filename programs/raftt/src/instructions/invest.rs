@@ -29,7 +29,8 @@ pub struct Invest<'info> {
         mut,
         seeds = [b"offering", offering.authority.as_ref()],
         bump = offering.bump,
-        constraint = !offering.is_closed @ ErrorCode::OfferingIsClosed
+        constraint = !offering.is_closed @ ErrorCode::OfferingIsClosed,
+        constraint = !offering.is_failed @ ErrorCode::OfferingAlreadyFailed
     )]
     pub offering: Account<'info, Offering>,
 

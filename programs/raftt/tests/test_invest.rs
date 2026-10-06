@@ -583,3 +583,16 @@ fn test_refund() {
 
     assert_eq!(vault_token.amount, 0);
 }
+
+#[test]
+fn test_invest_failed_offering_fails() {
+    let mut ctx = TestContext::new(500_000, 500_000);
+
+    // A oferta falha antes do investimento
+    ctx.send_fail_offering();
+
+    // Tenta investir depois da oferta ter falhado
+    let result = ctx.send_invest(100_000);
+
+    assert!(result.is_err());
+}
