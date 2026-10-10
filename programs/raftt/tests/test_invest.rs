@@ -1,30 +1,25 @@
 use {
-    anchor_lang::{
-        AccountDeserialize,
-        InstructionData,
-        ToAccountMetas,
-        
-    },
-    anchor_spl::token::ID as TOKEN_PROGRAM_ID,
+    anchor_lang::{AccountDeserialize, InstructionData, ToAccountMetas},
     anchor_spl::token::TokenAccount,
+    anchor_spl::token::ID as TOKEN_PROGRAM_ID,
     litesvm::LiteSVM,
+    solana_instruction::Instruction,
     solana_keypair::Keypair,
     solana_pubkey::Pubkey,
     solana_signer::Signer,
-    spl_token_interface::instruction as token_instruction,
-    solana_transaction::Transaction,
     solana_system_interface::instruction as system_instruction,
-    solana_instruction::Instruction,
+    solana_transaction::Transaction,
+    spl_token_interface::instruction as token_instruction,
 };
+
+const RENT_SYSVAR_ID: Pubkey =
+    Pubkey::from_str_const("SysvarRent111111111111111111111111111111111");
 
 fn create_mint(svm: &mut LiteSVM, payer: &Keypair) -> Keypair {
     let mint = Keypair::new();
-
-    // Tamanho de uma conta Mint SPL Token.
     let mint_space = 82u64;
 
-    let mint_rent = svm
-        .minimum_balance_for_rent_exemption(mint_space as usize);
+    let mint_rent = svm.minimum_balance_for_rent_exemption(mint_space as usize);
 
     let create_mint_account = system_instruction::create_account(
         &payer.pubkey(),
@@ -63,11 +58,9 @@ fn create_token_account(
     owner: &Pubkey,
 ) -> Keypair {
     let token_account = Keypair::new();
-
     let account_space = 165u64;
 
-    let account_rent = svm
-        .minimum_balance_for_rent_exemption(account_space as usize);
+    let account_rent = svm.minimum_balance_for_rent_exemption(account_space as usize);
 
     let create_account = system_instruction::create_account(
         &payer.pubkey(),
@@ -98,13 +91,6 @@ fn create_token_account(
     token_account
 }
 
-    const RENT_SYSVAR_ID: Pubkey =
-        solana_pubkey::Pubkey::from_str_const(
-        "SysvarRent111111111111111111111111111111111",
-    );
-
-
-
 struct TestContext {
     svm: LiteSVM,
     payer: Keypair,
@@ -115,34 +101,24 @@ struct TestContext {
     position: Pubkey,
 }
 
-
-
 impl TestContext {
     fn new(target_amount: u64, initial_tokens: u64) -> Self {
         let mut svm = LiteSVM::new();
 
         svm.add_program_from_file(
             raftt::ID,
-            concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../../target/deploy/raftt.so"
-            ),
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/deploy/raftt.so"),
         )
         .unwrap();
 
         let payer = Keypair::new();
 
-        svm.airdrop(&payer.pubkey(), 10_000_000_000)
-            .unwrap();
+        svm.airdrop(&payer.pubkey(), 10_000_000_000).unwrap();
 
         let mint = create_mint(&mut svm, &payer);
 
-        let investor_token_account = create_token_account(
-            &mut svm,
-            &payer,
-            &mint.pubkey(),
-            &payer.pubkey(),
-        );
+        let investor_token_account =
+            create_token_account(&mut svm, &payer, &mint.pubkey(), &payer.pubkey());
 
         if initial_tokens > 0 {
             let mint_to_ix = token_instruction::mint_to(
@@ -166,20 +142,15 @@ impl TestContext {
                 .expect("falha ao criar tokens do investidor");
         }
 
-        let (offering, _) = Pubkey::find_program_address(
-            &[b"offering", payer.pubkey().as_ref()],
-            &raftt::ID,
-        );
+        let (offering, _) =
+            Pubkey::find_program_address(&[b"offering", payer.pubkey().as_ref()], &raftt::ID);
 
-        let (vault, _) = Pubkey::find_program_address(
-            &[b"vault", offering.as_ref()],
-            &raftt::ID,
-        );
+        let (vault, _) = Pubkey::find_program_address(&[b"vault", offering.as_ref()], &raftt::ID);
 
         let (position, _) = Pubkey::find_program_address(
             &[b"position", offering.as_ref(), payer.pubkey().as_ref()],
             &raftt::ID,
-    );
+        );
 
         let mut ctx = Self {
             svm,
@@ -208,10 +179,7 @@ impl TestContext {
                 rent: RENT_SYSVAR_ID,
             }
             .to_account_metas(None),
-            data: raftt::instruction::Initialize {
-                target_amount,
-            }
-            .data(),
+            data: raftt::instruction::Initialize { target_amount }.data(),
         };
 
         let tx = Transaction::new_signed_with_payer(
@@ -240,14 +208,14 @@ impl TestContext {
                 system_program: anchor_lang::system_program::ID,
             }
             .to_account_metas(None),
-            data: raftt::instruction::Invest {
-                amount,
-            }
-            .data(),
+            data: raftt::instruction::Invest { amount }.data(),
         }
     }
 
-    fn send_invest(&mut self, amount: u64) -> Result<(), litesvm::types::FailedTransactionMetadata> {
+    fn send_invest(
+        &mut self,
+        amount: u64,
+    ) -> Result<(), litesvm::types::FailedTransactionMetadata> {
         let ix = self.invest_ix(amount);
 
         let tx = Transaction::new_signed_with_payer(
@@ -260,46 +228,15 @@ impl TestContext {
         self.svm.send_transaction(tx).map(|_| ())
     }
 
-    fn send_fail_offering(&mut self) {
-    let ix = raftt::instruction::FailOffering {};
-
-    let accounts = raftt::accounts::FailOffering {
-        offering: self.offering,
-        authority: self.payer.pubkey(),
-    };
-
-    let instruction = Instruction {
-        program_id: raftt::ID,
-        accounts: accounts.to_account_metas(None),
-        data: ix.data(),
-    };
-
-    let tx = Transaction::new_signed_with_payer(
-        &[instruction],
-        Some(&self.payer.pubkey()),
-        &[&self.payer],
-        self.svm.latest_blockhash(),
-    );
-
-    self.svm.send_transaction(tx).unwrap();
-}
-
-    fn send_refund(&mut self) {
-        let ix = raftt::instruction::Refund {};
-
-        let accounts = raftt::accounts::Refund {
-            investor: self.payer.pubkey(),
-            offering: self.offering,
-            position: self.position,
-            vault: self.vault,
-            investor_token_account: self.investor_token_account.pubkey(),
-            token_program: TOKEN_PROGRAM_ID,
-        };
-
+    fn send_fail_offering(&mut self) -> Result<(), litesvm::types::FailedTransactionMetadata> {
         let instruction = Instruction {
             program_id: raftt::ID,
-            accounts: accounts.to_account_metas(None),
-            data: ix.data(),
+            accounts: raftt::accounts::FailOffering {
+                offering: self.offering,
+                authority: self.payer.pubkey(),
+            }
+            .to_account_metas(None),
+            data: raftt::instruction::FailOffering {}.data(),
         };
 
         let tx = Transaction::new_signed_with_payer(
@@ -309,9 +246,34 @@ impl TestContext {
             self.svm.latest_blockhash(),
         );
 
-        self.svm.send_transaction(tx).unwrap();
+        self.svm.send_transaction(tx).map(|_| ())
     }
-    
+
+    fn send_refund(&mut self) -> Result<(), litesvm::types::FailedTransactionMetadata> {
+        let instruction = Instruction {
+            program_id: raftt::ID,
+            accounts: raftt::accounts::Refund {
+                investor: self.payer.pubkey(),
+                offering: self.offering,
+                position: self.position,
+                vault: self.vault,
+                investor_token_account: self.investor_token_account.pubkey(),
+                token_program: TOKEN_PROGRAM_ID,
+            }
+            .to_account_metas(None),
+            data: raftt::instruction::Refund {}.data(),
+        };
+
+        let tx = Transaction::new_signed_with_payer(
+            &[instruction],
+            Some(&self.payer.pubkey()),
+            &[&self.payer],
+            self.svm.latest_blockhash(),
+        );
+
+        self.svm.send_transaction(tx).map(|_| ())
+    }
+
     fn send_release(&mut self) -> Result<(), litesvm::types::FailedTransactionMetadata> {
         let instruction = Instruction {
             program_id: raftt::ID,
@@ -335,7 +297,6 @@ impl TestContext {
 
         self.svm.send_transaction(tx).map(|_| ())
     }
-
 }
 
 #[test]
@@ -344,28 +305,18 @@ fn test_invest() {
 
     svm.add_program_from_file(
         raftt::ID,
-        concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../target/deploy/raftt.so"
-        ),
+        concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/deploy/raftt.so"),
     )
     .unwrap();
 
-
-
     let payer = Keypair::new();
 
-    svm.airdrop(&payer.pubkey(), 10_000_000_000)
-        .unwrap();
+    svm.airdrop(&payer.pubkey(), 10_000_000_000).unwrap();
 
     let mint = create_mint(&mut svm, &payer);
 
-    let investor_token_account = create_token_account(
-        &mut svm,
-        &payer,
-        &mint.pubkey(),
-        &payer.pubkey(),
-    );
+    let investor_token_account =
+        create_token_account(&mut svm, &payer, &mint.pubkey(), &payer.pubkey());
 
     let mint_to_ix = token_instruction::mint_to(
         &TOKEN_PROGRAM_ID,
@@ -377,26 +328,15 @@ fn test_invest() {
     )
     .unwrap();
 
-    let (offering, _) = Pubkey::find_program_address(
-        &[b"offering", payer.pubkey().as_ref()],
-        &raftt::ID,
-    );
+    let (offering, _) =
+        Pubkey::find_program_address(&[b"offering", payer.pubkey().as_ref()], &raftt::ID);
 
-    let (vault, _) = Pubkey::find_program_address(
-        &[b"vault", offering.as_ref()],
-        &raftt::ID,
-    );
+    let (vault, _) = Pubkey::find_program_address(&[b"vault", offering.as_ref()], &raftt::ID);
 
     let (position, _) = Pubkey::find_program_address(
-        &[
-            b"position",
-            offering.as_ref(),
-            payer.pubkey().as_ref(),
-        ],
-    &raftt::ID,
-);
-
-
+        &[b"position", offering.as_ref(), payer.pubkey().as_ref()],
+        &raftt::ID,
+    );
 
     let initialize_ix = Instruction {
         program_id: raftt::ID,
@@ -429,10 +369,7 @@ fn test_invest() {
             system_program: anchor_lang::system_program::ID,
         }
         .to_account_metas(None),
-        data: raftt::instruction::Invest {
-            amount: 500_000,
-        }
-        .data(),
+        data: raftt::instruction::Invest { amount: 500_000 }.data(),
     };
 
     let tx = Transaction::new_signed_with_payer(
@@ -442,49 +379,33 @@ fn test_invest() {
         svm.latest_blockhash(),
     );
 
-
     svm.send_transaction(tx)
         .expect("falha ao executar mint, initialize e invest");
 
+    let offering_account = svm.get_account(&offering).expect("offering não encontrada");
 
-    let offering_account = svm
-    .get_account(&offering)
-    .expect("offering não encontrada");
-
-    let mut offering_data = offering_account.data.as_slice();
-
-    let offering_state =    
-    raftt::state::Offering::try_deserialize(&mut offering_data)
-    .expect("falha ao desserializar offering");
+    let offering_state =
+        raftt::state::Offering::try_deserialize(&mut offering_account.data.as_slice())
+            .expect("falha ao desserializar offering");
 
     assert_eq!(offering_state.raised_amount, 500_000);
     assert!(offering_state.is_closed);
 
     let investor_account = svm
-    .get_account(&investor_token_account.pubkey())
-    .expect("conta do investidor não encontrada");
+        .get_account(&investor_token_account.pubkey())
+        .expect("conta do investidor não encontrada");
 
-    let mut investor_data = investor_account.data.as_slice();
-
-    let investor_token =
-        TokenAccount::try_deserialize(&mut investor_data)
-            .expect("falha ao desserializar conta do investidor");
+    let investor_token = TokenAccount::try_deserialize(&mut investor_account.data.as_slice())
+        .expect("falha ao desserializar conta do investidor");
 
     assert_eq!(investor_token.amount, 0);
 
+    let vault_account = svm.get_account(&vault).expect("vault não encontrado");
 
-    let vault_account = svm
-        .get_account(&vault)
-        .expect("vault não encontrado");
-
-    let mut vault_data = vault_account.data.as_slice();
-
-    let vault_token =
-        TokenAccount::try_deserialize(&mut vault_data)
-            .expect("falha ao desserializar vault");
+    let vault_token = TokenAccount::try_deserialize(&mut vault_account.data.as_slice())
+        .expect("falha ao desserializar vault");
 
     assert_eq!(vault_token.amount, 500_000);
-
 }
 
 #[test]
@@ -514,8 +435,7 @@ fn test_invest_partial_then_complete() {
     let offering_account = ctx.svm.get_account(&ctx.offering).unwrap();
 
     let mut offering_state =
-        raftt::state::Offering::try_deserialize(&mut offering_account.data.as_slice())
-            .unwrap();
+        raftt::state::Offering::try_deserialize(&mut offering_account.data.as_slice()).unwrap();
 
     assert_eq!(offering_state.raised_amount, 300_000);
     assert!(!offering_state.is_closed);
@@ -525,13 +445,11 @@ fn test_invest_partial_then_complete() {
     let offering_account = ctx.svm.get_account(&ctx.offering).unwrap();
 
     offering_state =
-        raftt::state::Offering::try_deserialize(&mut offering_account.data.as_slice())
-            .unwrap();
+        raftt::state::Offering::try_deserialize(&mut offering_account.data.as_slice()).unwrap();
 
     assert_eq!(offering_state.raised_amount, 500_000);
     assert!(offering_state.is_closed);
 }
-
 
 #[test]
 fn test_invest_twice_then_complete() {
@@ -543,31 +461,25 @@ fn test_invest_twice_then_complete() {
     let offering_account = ctx.svm.get_account(&ctx.offering).unwrap();
 
     let offering_state =
-        raftt::state::Offering::try_deserialize(&mut offering_account.data.as_slice())
-            .unwrap();
+        raftt::state::Offering::try_deserialize(&mut offering_account.data.as_slice()).unwrap();
 
     assert_eq!(offering_state.raised_amount, 500_000);
     assert!(offering_state.is_closed);
 
     let vault_account = ctx.svm.get_account(&ctx.vault).unwrap();
 
-    let vault_token =
-        TokenAccount::try_deserialize(&mut vault_account.data.as_slice())
-            .unwrap();
+    let vault_token = TokenAccount::try_deserialize(&mut vault_account.data.as_slice()).unwrap();
 
     assert_eq!(vault_token.amount, 500_000);
 
-
     let position_account = ctx
-    .svm
-    .get_account(&ctx.position)
-    .expect("position não encontrada");
-
-    let mut position_data = position_account.data.as_slice();
+        .svm
+        .get_account(&ctx.position)
+        .expect("position não encontrada");
 
     let position_state =
-        raftt::state::Position::try_deserialize(&mut position_data)
-        .expect("falha ao desserializar position");
+        raftt::state::Position::try_deserialize(&mut position_account.data.as_slice())
+            .expect("falha ao desserializar position");
 
     assert_eq!(position_state.offering, ctx.offering);
     assert_eq!(position_state.investor, ctx.payer.pubkey());
@@ -579,18 +491,16 @@ fn test_refund() {
     let mut ctx = TestContext::new(500_000, 500_000);
 
     ctx.send_invest(300_000).unwrap();
-    ctx.send_fail_offering();
-    ctx.send_refund();
+    ctx.send_fail_offering().unwrap();
+    ctx.send_refund().unwrap();
 
     let position_account = ctx
         .svm
         .get_account(&ctx.position)
         .expect("position não encontrada");
 
-    let mut position_data = position_account.data.as_slice();
-
     let position_state =
-        raftt::state::Position::try_deserialize(&mut position_data)
+        raftt::state::Position::try_deserialize(&mut position_account.data.as_slice())
             .expect("falha ao desserializar position");
 
     assert_eq!(position_state.amount, 0);
@@ -600,109 +510,91 @@ fn test_refund() {
         .get_account(&ctx.vault)
         .expect("vault não encontrada");
 
-    let mut vault_data = vault_account.data.as_slice();
-
-    let vault_token =
-        TokenAccount::try_deserialize(&mut vault_data)
-            .expect("falha ao ler vault");
+    let vault_token = TokenAccount::try_deserialize(&mut vault_account.data.as_slice())
+        .expect("falha ao ler vault");
 
     assert_eq!(vault_token.amount, 0);
+
+    let investor_account = ctx
+        .svm
+        .get_account(&ctx.investor_token_account.pubkey())
+        .expect("conta do investidor não encontrada");
+
+    let investor_token = TokenAccount::try_deserialize(&mut investor_account.data.as_slice())
+        .expect("falha ao ler conta do investidor");
+
+    assert_eq!(investor_token.amount, 500_000);
 }
 
 #[test]
 fn test_invest_failed_offering_fails() {
     let mut ctx = TestContext::new(500_000, 500_000);
 
-    // A oferta falha antes do investimento
-    ctx.send_fail_offering();
+    ctx.send_fail_offering().unwrap();
 
-    // Tenta investir depois da oferta ter falhado
     let result = ctx.send_invest(100_000);
 
     assert!(result.is_err());
 }
 
-
 #[test]
 fn test_release_after_target_reached() {
     let mut ctx = TestContext::new(500_000, 500_000);
 
-    // Atinge a meta e fecha a oferta.
     ctx.send_invest(500_000).unwrap();
-
-    // Libera os fundos para a conta de destino.
     ctx.send_release().unwrap();
 
-    // Confere o saldo do destino.
     let destination_account = ctx
         .svm
         .get_account(&ctx.investor_token_account.pubkey())
         .expect("conta de destino não encontrada");
 
-    let destination =
-        TokenAccount::try_deserialize(
-            &mut destination_account.data.as_slice()
-        )
+    let destination = TokenAccount::try_deserialize(&mut destination_account.data.as_slice())
         .expect("falha ao ler conta de destino");
 
     assert_eq!(destination.amount, 500_000);
 
-    // Confere se o Vault ficou vazio.
     let vault_account = ctx
         .svm
         .get_account(&ctx.vault)
         .expect("vault não encontrado");
 
-    let vault =
-        TokenAccount::try_deserialize(
-            &mut vault_account.data.as_slice()
-        )
+    let vault = TokenAccount::try_deserialize(&mut vault_account.data.as_slice())
         .expect("falha ao ler vault");
 
     assert_eq!(vault.amount, 0);
 
-    // Confere se a oferta foi marcada como liberada.
     let offering_account = ctx
         .svm
         .get_account(&ctx.offering)
         .expect("oferta não encontrada");
 
-    let offering =
-        raftt::state::Offering::try_deserialize(
-            &mut offering_account.data.as_slice()
-        )
+    let offering = raftt::state::Offering::try_deserialize(&mut offering_account.data.as_slice())
         .expect("falha ao ler oferta");
 
     assert!(offering.is_released);
 }
 
-
 #[test]
 fn test_release_before_target_reached_fails() {
     let mut ctx = TestContext::new(500_000, 500_000);
 
-    // Arrecada apenas parte da meta.
     ctx.send_invest(300_000).unwrap();
 
-    // A liberação deve falhar.
     let result = ctx.send_release();
+
     assert!(result.is_err());
 
-    // O Vault deve continuar com os fundos.
     let vault_account = ctx
         .svm
         .get_account(&ctx.vault)
         .expect("vault não encontrado");
 
-    let vault =
-        TokenAccount::try_deserialize(
-            &mut vault_account.data.as_slice()
-        )
+    let vault = TokenAccount::try_deserialize(&mut vault_account.data.as_slice())
         .expect("falha ao ler vault");
 
     assert_eq!(vault.amount, 300_000);
 }
-
 
 #[test]
 fn test_release_wrong_authority_fails() {
@@ -710,12 +602,9 @@ fn test_release_wrong_authority_fails() {
 
     ctx.send_invest(500_000).unwrap();
 
-    // Cria outra carteira, que não é a autoridade da oferta.
     let attacker = Keypair::new();
 
-    ctx.svm
-        .airdrop(&attacker.pubkey(), 1_000_000_000)
-        .unwrap();
+    ctx.svm.airdrop(&attacker.pubkey(), 1_000_000_000).unwrap();
 
     let instruction = Instruction {
         program_id: raftt::ID,
@@ -741,14 +630,9 @@ fn test_release_wrong_authority_fails() {
 
     assert!(result.is_err());
 
-    // Os fundos continuam no Vault.
     let vault_account = ctx.svm.get_account(&ctx.vault).unwrap();
 
-    let vault =
-        TokenAccount::try_deserialize(
-            &mut vault_account.data.as_slice()
-        )
-        .unwrap();
+    let vault = TokenAccount::try_deserialize(&mut vault_account.data.as_slice()).unwrap();
 
     assert_eq!(vault.amount, 500_000);
 }
@@ -757,22 +641,72 @@ fn test_release_wrong_authority_fails() {
 fn test_release_twice_fails() {
     let mut ctx = TestContext::new(500_000, 500_000);
 
-    // Atinge a meta da oferta.
     ctx.send_invest(500_000).unwrap();
-
-    // A primeira liberação deve funcionar.
     ctx.send_release().unwrap();
 
-    // A segunda liberação deve falhar.
     let result = ctx.send_release();
+
     assert!(result.is_err());
 
-    // Confirma que o Vault continua vazio.
     let vault_account = ctx.svm.get_account(&ctx.vault).unwrap();
 
-    let vault =
-        TokenAccount::try_deserialize(&mut vault_account.data.as_slice())
-            .unwrap();
+    let vault = TokenAccount::try_deserialize(&mut vault_account.data.as_slice()).unwrap();
 
     assert_eq!(vault.amount, 0);
+}
+
+#[test]
+fn test_fail_offering_wrong_authority_fails() {
+    let mut ctx = TestContext::new(500_000, 500_000);
+
+    let attacker = Keypair::new();
+
+    ctx.svm.airdrop(&attacker.pubkey(), 1_000_000_000).unwrap();
+
+    let instruction = Instruction {
+        program_id: raftt::ID,
+        accounts: raftt::accounts::FailOffering {
+            offering: ctx.offering,
+            authority: attacker.pubkey(),
+        }
+        .to_account_metas(None),
+        data: raftt::instruction::FailOffering {}.data(),
+    };
+
+    let tx = Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&attacker.pubkey()),
+        &[&attacker],
+        ctx.svm.latest_blockhash(),
+    );
+
+    let result = ctx.svm.send_transaction(tx);
+
+    assert!(result.is_err());
+
+    let offering_account = ctx.svm.get_account(&ctx.offering).unwrap();
+
+    let offering =
+        raftt::state::Offering::try_deserialize(&mut offering_account.data.as_slice()).unwrap();
+
+    assert!(!offering.is_failed);
+}
+
+#[test]
+fn test_fail_offering_after_target_reached_fails() {
+    let mut ctx = TestContext::new(500_000, 500_000);
+
+    ctx.send_invest(500_000).unwrap();
+
+    let result = ctx.send_fail_offering();
+
+    assert!(result.is_err());
+
+    let offering_account = ctx.svm.get_account(&ctx.offering).unwrap();
+
+    let offering =
+        raftt::state::Offering::try_deserialize(&mut offering_account.data.as_slice()).unwrap();
+
+    assert!(offering.is_closed);
+    assert!(!offering.is_failed);
 }
