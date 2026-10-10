@@ -311,6 +311,31 @@ impl TestContext {
 
         self.svm.send_transaction(tx).unwrap();
     }
+    
+    fn send_release(&mut self) -> Result<(), litesvm::types::FailedTransactionMetadata> {
+        let instruction = Instruction {
+            program_id: raftt::ID,
+            accounts: raftt::accounts::Release {
+                authority: self.payer.pubkey(),
+                offering: self.offering,
+                vault: self.vault,
+                destination: self.investor_token_account.pubkey(),
+                token_program: TOKEN_PROGRAM_ID,
+            }
+            .to_account_metas(None),
+            data: raftt::instruction::Release {}.data(),
+        };
+
+        let tx = Transaction::new_signed_with_payer(
+            &[instruction],
+            Some(&self.payer.pubkey()),
+            &[&self.payer],
+            self.svm.latest_blockhash(),
+        );
+
+        self.svm.send_transaction(tx).map(|_| ())
+    }
+
 }
 
 #[test]
@@ -595,4 +620,159 @@ fn test_invest_failed_offering_fails() {
     let result = ctx.send_invest(100_000);
 
     assert!(result.is_err());
+}
+
+
+#[test]
+fn test_release_after_target_reached() {
+    let mut ctx = TestContext::new(500_000, 500_000);
+
+    // Atinge a meta e fecha a oferta.
+    ctx.send_invest(500_000).unwrap();
+
+    // Libera os fundos para a conta de destino.
+    ctx.send_release().unwrap();
+
+    // Confere o saldo do destino.
+    let destination_account = ctx
+        .svm
+        .get_account(&ctx.investor_token_account.pubkey())
+        .expect("conta de destino não encontrada");
+
+    let destination =
+        TokenAccount::try_deserialize(
+            &mut destination_account.data.as_slice()
+        )
+        .expect("falha ao ler conta de destino");
+
+    assert_eq!(destination.amount, 500_000);
+
+    // Confere se o Vault ficou vazio.
+    let vault_account = ctx
+        .svm
+        .get_account(&ctx.vault)
+        .expect("vault não encontrado");
+
+    let vault =
+        TokenAccount::try_deserialize(
+            &mut vault_account.data.as_slice()
+        )
+        .expect("falha ao ler vault");
+
+    assert_eq!(vault.amount, 0);
+
+    // Confere se a oferta foi marcada como liberada.
+    let offering_account = ctx
+        .svm
+        .get_account(&ctx.offering)
+        .expect("oferta não encontrada");
+
+    let offering =
+        raftt::state::Offering::try_deserialize(
+            &mut offering_account.data.as_slice()
+        )
+        .expect("falha ao ler oferta");
+
+    assert!(offering.is_released);
+}
+
+
+#[test]
+fn test_release_before_target_reached_fails() {
+    let mut ctx = TestContext::new(500_000, 500_000);
+
+    // Arrecada apenas parte da meta.
+    ctx.send_invest(300_000).unwrap();
+
+    // A liberação deve falhar.
+    let result = ctx.send_release();
+    assert!(result.is_err());
+
+    // O Vault deve continuar com os fundos.
+    let vault_account = ctx
+        .svm
+        .get_account(&ctx.vault)
+        .expect("vault não encontrado");
+
+    let vault =
+        TokenAccount::try_deserialize(
+            &mut vault_account.data.as_slice()
+        )
+        .expect("falha ao ler vault");
+
+    assert_eq!(vault.amount, 300_000);
+}
+
+
+#[test]
+fn test_release_wrong_authority_fails() {
+    let mut ctx = TestContext::new(500_000, 500_000);
+
+    ctx.send_invest(500_000).unwrap();
+
+    // Cria outra carteira, que não é a autoridade da oferta.
+    let attacker = Keypair::new();
+
+    ctx.svm
+        .airdrop(&attacker.pubkey(), 1_000_000_000)
+        .unwrap();
+
+    let instruction = Instruction {
+        program_id: raftt::ID,
+        accounts: raftt::accounts::Release {
+            authority: attacker.pubkey(),
+            offering: ctx.offering,
+            vault: ctx.vault,
+            destination: ctx.investor_token_account.pubkey(),
+            token_program: TOKEN_PROGRAM_ID,
+        }
+        .to_account_metas(None),
+        data: raftt::instruction::Release {}.data(),
+    };
+
+    let tx = Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&attacker.pubkey()),
+        &[&attacker],
+        ctx.svm.latest_blockhash(),
+    );
+
+    let result = ctx.svm.send_transaction(tx);
+
+    assert!(result.is_err());
+
+    // Os fundos continuam no Vault.
+    let vault_account = ctx.svm.get_account(&ctx.vault).unwrap();
+
+    let vault =
+        TokenAccount::try_deserialize(
+            &mut vault_account.data.as_slice()
+        )
+        .unwrap();
+
+    assert_eq!(vault.amount, 500_000);
+}
+
+#[test]
+fn test_release_twice_fails() {
+    let mut ctx = TestContext::new(500_000, 500_000);
+
+    // Atinge a meta da oferta.
+    ctx.send_invest(500_000).unwrap();
+
+    // A primeira liberação deve funcionar.
+    ctx.send_release().unwrap();
+
+    // A segunda liberação deve falhar.
+    let result = ctx.send_release();
+    assert!(result.is_err());
+
+    // Confirma que o Vault continua vazio.
+    let vault_account = ctx.svm.get_account(&ctx.vault).unwrap();
+
+    let vault =
+        TokenAccount::try_deserialize(&mut vault_account.data.as_slice())
+            .unwrap();
+
+    assert_eq!(vault.amount, 0);
 }
