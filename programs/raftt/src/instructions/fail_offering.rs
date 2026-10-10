@@ -25,6 +25,7 @@ pub fn handle_fail_offering(ctx: Context<FailOffering>) -> Result<()> {
     require!(!offering.is_failed, ErrorCode::OfferingAlreadyFailed);
 
     offering.is_failed = true;
+    offering.is_closed = true;
 
     msg!("Oferta marcada como falha.");
 

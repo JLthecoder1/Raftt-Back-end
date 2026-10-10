@@ -527,6 +527,30 @@ fn test_refund() {
 }
 
 #[test]
+fn test_refund_twice_fails() {
+    let mut ctx = TestContext::new(500_000, 500_000);
+
+    ctx.send_invest(300_000).unwrap();
+    ctx.send_fail_offering().unwrap();
+    ctx.send_refund().unwrap();
+
+    let result = ctx.send_refund();
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_refund_without_investment_fails() {
+    let mut ctx = TestContext::new(500_000, 500_000);
+
+    ctx.send_fail_offering().unwrap();
+
+    let result = ctx.send_refund();
+
+    assert!(result.is_err());
+}
+
+#[test]
 fn test_invest_failed_offering_fails() {
     let mut ctx = TestContext::new(500_000, 500_000);
 
@@ -709,4 +733,19 @@ fn test_fail_offering_after_target_reached_fails() {
 
     assert!(offering.is_closed);
     assert!(!offering.is_failed);
+}
+
+#[test]
+fn test_fail_offering_closes_offering() {
+    let mut ctx = TestContext::new(500_000, 500_000);
+
+    ctx.send_fail_offering().unwrap();
+
+    let offering_account = ctx.svm.get_account(&ctx.offering).unwrap();
+
+    let offering =
+        raftt::state::Offering::try_deserialize(&mut offering_account.data.as_slice()).unwrap();
+
+    assert!(offering.is_failed);
+    assert!(offering.is_closed);
 }

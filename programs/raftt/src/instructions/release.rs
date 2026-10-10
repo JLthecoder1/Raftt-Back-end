@@ -39,6 +39,7 @@ pub struct Release<'info> {
 
 pub fn handle_release(ctx: Context<Release>) -> Result<()> {
     let offering = &mut ctx.accounts.offering;
+    require!(!offering.is_failed, ErrorCode::OfferingAlreadyFailed);
 
     require!(
         offering.raised_amount >= offering.target_amount,
