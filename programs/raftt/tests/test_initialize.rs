@@ -1,11 +1,5 @@
-
 use {
-    anchor_lang::{
-        system_program,
-        AccountDeserialize,
-        InstructionData,
-        ToAccountMetas,
-    },
+    anchor_lang::{system_program, AccountDeserialize, InstructionData, ToAccountMetas},
     anchor_spl::token::ID as TOKEN_PROGRAM_ID,
     litesvm::LiteSVM,
     solana_instruction::Instruction,
@@ -18,26 +12,20 @@ use {
 };
 
 const RENT_SYSVAR_ID: Pubkey =
-    solana_pubkey::Pubkey::from_str_const(
-        "SysvarRent111111111111111111111111111111111",
-    );
+    solana_pubkey::Pubkey::from_str_const("SysvarRent111111111111111111111111111111111");
 
 fn setup() -> (LiteSVM, Keypair) {
     let mut svm = LiteSVM::new();
 
     svm.add_program_from_file(
         raftt::ID,
-        concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../target/deploy/raftt.so"
-        ),
+        concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/deploy/raftt.so"),
     )
     .unwrap();
 
     let payer = Keypair::new();
 
-    svm.airdrop(&payer.pubkey(), 1_000_000_000)
-        .unwrap();
+    svm.airdrop(&payer.pubkey(), 1_000_000_000).unwrap();
 
     (svm, payer)
 }
@@ -48,8 +36,7 @@ fn create_mint(svm: &mut LiteSVM, payer: &Keypair) -> Keypair {
     // Tamanho de uma conta Mint SPL Token.
     let mint_space = 82u64;
 
-    let mint_rent = svm
-        .minimum_balance_for_rent_exemption(mint_space as usize);
+    let mint_rent = svm.minimum_balance_for_rent_exemption(mint_space as usize);
 
     let create_mint_account = system_instruction::create_account(
         &payer.pubkey(),
@@ -82,17 +69,11 @@ fn create_mint(svm: &mut LiteSVM, payer: &Keypair) -> Keypair {
 }
 
 fn offering_pda(user: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(
-        &[b"offering", user.as_ref()],
-        &raftt::ID,
-    )
+    Pubkey::find_program_address(&[b"offering", user.as_ref()], &raftt::ID)
 }
 
 fn vault_pda(offering: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(
-        &[b"vault", offering.as_ref()],
-        &raftt::ID,
-    )
+    Pubkey::find_program_address(&[b"vault", offering.as_ref()], &raftt::ID)
 }
 
 fn initialize_ix(
@@ -114,18 +95,11 @@ fn initialize_ix(
             rent: RENT_SYSVAR_ID,
         }
         .to_account_metas(None),
-        data: raftt::instruction::Initialize {
-            target_amount,
-        }
-        .data(),
+        data: raftt::instruction::Initialize { target_amount }.data(),
     }
 }
 
-fn tx_for(
-    svm: &LiteSVM,
-    payer: &Keypair,
-    ix: Instruction,
-) -> Transaction {
+fn tx_for(svm: &LiteSVM, payer: &Keypair, ix: Instruction) -> Transaction {
     Transaction::new_signed_with_payer(
         &[ix],
         Some(&payer.pubkey()),
@@ -165,11 +139,7 @@ fn test_initialize() {
 
     assert_eq!(account.owner, raftt::ID);
 
-    let state =
-        raftt::state::Offering::try_deserialize(
-            &mut account.data.as_slice(),
-        )
-        .unwrap();
+    let state = raftt::state::Offering::try_deserialize(&mut account.data.as_slice()).unwrap();
 
     assert_eq!(state.authority, payer.pubkey());
     assert_eq!(state.mint, mint.pubkey());
@@ -192,13 +162,7 @@ fn test_initialize_twice_fails() {
     let tx = tx_for(
         &svm,
         &payer,
-        initialize_ix(
-            payer.pubkey(),
-            offering,
-            vault,
-            mint.pubkey(),
-            2_000_000,
-        ),
+        initialize_ix(payer.pubkey(), offering, vault, mint.pubkey(), 2_000_000),
     );
 
     svm.send_transaction(tx).unwrap();
@@ -206,13 +170,7 @@ fn test_initialize_twice_fails() {
     let tx = tx_for(
         &svm,
         &payer,
-        initialize_ix(
-            payer.pubkey(),
-            offering,
-            vault,
-            mint.pubkey(),
-            3_000_000,
-        ),
+        initialize_ix(payer.pubkey(), offering, vault, mint.pubkey(), 3_000_000),
     );
 
     let err = svm.send_transaction(tx).unwrap_err();
@@ -226,11 +184,7 @@ fn test_initialize_twice_fails() {
 
     let account = svm.get_account(&offering).unwrap();
 
-    let state =
-        raftt::state::Offering::try_deserialize(
-            &mut account.data.as_slice(),
-        )
-        .unwrap();
+    let state = raftt::state::Offering::try_deserialize(&mut account.data.as_slice()).unwrap();
 
     assert_eq!(state.target_amount, 2_000_000);
 }
@@ -280,13 +234,7 @@ fn test_initialize_zero_target_fails() {
     let tx = tx_for(
         &svm,
         &payer,
-        initialize_ix(
-            payer.pubkey(),
-            offering,
-            vault,
-            mint.pubkey(),
-            0,
-        ),
+        initialize_ix(payer.pubkey(), offering, vault, mint.pubkey(), 0),
     );
 
     let err = svm.send_transaction(tx).unwrap_err();

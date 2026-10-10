@@ -1,9 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::{
-    error::ErrorCode,
-    state::Offering,
-};
+use crate::{error::ErrorCode, state::Offering};
 
 #[derive(Accounts)]
 pub struct FailOffering<'info> {

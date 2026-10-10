@@ -1,6 +1,6 @@
-use anchor_lang::prelude::*;
-use anchor_spl::token::{Token, TokenAccount, Mint};
 use crate::{error::ErrorCode, state::Offering};
+use anchor_lang::prelude::*;
+use anchor_spl::token::{Mint, Token, TokenAccount};
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
@@ -40,7 +40,7 @@ pub fn handle_initialize(ctx: Context<Initialize>, target_amount: u64) -> Result
     require!(target_amount > 0, ErrorCode::InvalidTargetAmount);
 
     let offering = &mut ctx.accounts.offering;
-    
+
     // Preenche os dados iniciais da oferta da Raftt com os novos campos
     offering.authority = ctx.accounts.user.key();
     offering.mint = ctx.accounts.mint.key();
@@ -52,6 +52,9 @@ pub fn handle_initialize(ctx: Context<Initialize>, target_amount: u64) -> Result
     offering.vault = ctx.accounts.vault.key();
     offering.bump = ctx.bumps.offering;
 
-    msg!("Oferta da Raftt inicializada com sucesso! Meta: {}", target_amount);
+    msg!(
+        "Oferta da Raftt inicializada com sucesso! Meta: {}",
+        target_amount
+    );
     Ok(())
 }

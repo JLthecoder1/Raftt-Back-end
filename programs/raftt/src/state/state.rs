@@ -5,13 +5,13 @@ use anchor_lang::prelude::*;
 
 pub struct Offering {
     pub authority: Pubkey,
-    pub mint: Pubkey,        // Novo: Token aceito (dólar SPL)
+    pub mint: Pubkey, // Novo: Token aceito (dólar SPL)
     pub target_amount: u64,
     pub raised_amount: u64,
     pub is_closed: bool,
-    pub is_failed: bool,    // Novo: Indica se a oferta fechou
-    pub is_released: bool,     
-    pub vault: Pubkey,       // Novo: Endereço do cofre PDA
+    pub is_failed: bool, // Novo: Indica se a oferta fechou
+    pub is_released: bool,
+    pub vault: Pubkey, // Novo: Endereço do cofre PDA
     pub bump: u8,
 }
 

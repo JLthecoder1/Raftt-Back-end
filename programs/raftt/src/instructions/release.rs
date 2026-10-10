@@ -1,10 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
-use crate::{
-    error::ErrorCode,
-    state::Offering,
-};
+use crate::{error::ErrorCode, state::Offering};
 
 #[derive(Accounts)]
 pub struct Release<'info> {
@@ -48,19 +45,12 @@ pub fn handle_release(ctx: Context<Release>) -> Result<()> {
         ErrorCode::OfferingNotCompleted
     );
 
-    require!(
-        !offering.is_released,
-        ErrorCode::OfferingAlreadyReleased
-    );
+    require!(!offering.is_released, ErrorCode::OfferingAlreadyReleased);
 
     let authority_key = offering.authority;
     let bump = offering.bump;
 
-    let seeds = &[
-        b"offering",
-        authority_key.as_ref(),
-        &[bump],
-    ];
+    let seeds = &[b"offering", authority_key.as_ref(), &[bump]];
 
     let signer_seeds = &[&seeds[..]];
 
@@ -70,11 +60,8 @@ pub fn handle_release(ctx: Context<Release>) -> Result<()> {
         authority: offering.to_account_info(),
     };
 
-    let cpi_ctx = CpiContext::new_with_signer(
-        ctx.accounts.token_program.key(),
-        cpi_accounts,
-        signer_seeds,
-    );
+    let cpi_ctx =
+        CpiContext::new_with_signer(ctx.accounts.token_program.key(), cpi_accounts, signer_seeds);
 
     token::transfer(cpi_ctx, offering.raised_amount)?;
 
