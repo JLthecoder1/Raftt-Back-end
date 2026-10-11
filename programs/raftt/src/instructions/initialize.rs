@@ -1,8 +1,9 @@
-use anchor_lang::prelude::*;
-use anchor_spl::token::{Token, TokenAccount, Mint};
 use crate::{error::ErrorCode, state::Offering};
+use anchor_lang::prelude::*;
+use anchor_spl::token::{Mint, Token, TokenAccount};
 
 #[derive(Accounts)]
+#[instruction(offering_id: u64)]
 pub struct Initialize<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
@@ -15,7 +16,7 @@ pub struct Initialize<'info> {
         init,
         payer = user,
         space = 8 + Offering::INIT_SPACE,
-        seeds = [b"offering", user.key().as_ref()],
+        seeds = [b"offering", user.key().as_ref(), &offering_id.to_le_bytes()],
         bump
     )]
     pub offering: Account<'info, Offering>,
@@ -36,13 +37,18 @@ pub struct Initialize<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-pub fn handle_initialize(ctx: Context<Initialize>, target_amount: u64) -> Result<()> {
+pub fn handle_initialize(
+    ctx: Context<Initialize>,
+    offering_id: u64,
+    target_amount: u64,
+) -> Result<()> {
     require!(target_amount > 0, ErrorCode::InvalidTargetAmount);
 
     let offering = &mut ctx.accounts.offering;
-    
+
     // Preenche os dados iniciais da oferta da Raftt com os novos campos
     offering.authority = ctx.accounts.user.key();
+    offering.offering_id = offering_id;
     offering.mint = ctx.accounts.mint.key();
     offering.target_amount = target_amount;
     offering.raised_amount = 0;
@@ -52,6 +58,9 @@ pub fn handle_initialize(ctx: Context<Initialize>, target_amount: u64) -> Result
     offering.vault = ctx.accounts.vault.key();
     offering.bump = ctx.bumps.offering;
 
-    msg!("Oferta da Raftt inicializada com sucesso! Meta: {}", target_amount);
+    msg!(
+        "Oferta da Raftt inicializada com sucesso! Meta: {}",
+        target_amount
+    );
     Ok(())
 }

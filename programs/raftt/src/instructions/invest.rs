@@ -1,9 +1,9 @@
-use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Token, TokenAccount, Mint, TransferChecked};
 use crate::{
     error::ErrorCode,
     state::{Offering, Position},
 };
+use anchor_lang::prelude::*;
+use anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked};
 
 #[derive(Accounts)]
 pub struct Invest<'info> {
@@ -27,7 +27,11 @@ pub struct Invest<'info> {
     /// A conta da Oferta
     #[account(
         mut,
-        seeds = [b"offering", offering.authority.as_ref()],
+        seeds = [
+            b"offering",
+            offering.authority.as_ref(),
+            &offering.offering_id.to_le_bytes()
+        ],
         bump = offering.bump,
         constraint = !offering.is_closed @ ErrorCode::OfferingIsClosed,
         constraint = !offering.is_failed @ ErrorCode::OfferingAlreadyFailed
@@ -53,7 +57,6 @@ pub struct Invest<'info> {
     pub vault: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
-    
 }
 
 pub fn handle_invest(ctx: Context<Invest>, amount: u64) -> Result<()> {
@@ -62,11 +65,15 @@ pub fn handle_invest(ctx: Context<Invest>, amount: u64) -> Result<()> {
     let offering = &mut ctx.accounts.offering;
 
     // Garante que o novo montante não ultrapassa a meta
-    let new_raised = offering.raised_amount
+    let new_raised = offering
+        .raised_amount
         .checked_add(amount)
         .ok_or(ErrorCode::NumericalOverflow)?;
 
-    require!(new_raised <= offering.target_amount, ErrorCode::ExceedsTargetAmount);
+    require!(
+        new_raised <= offering.target_amount,
+        ErrorCode::ExceedsTargetAmount
+    );
 
     // Transfere os tokens do investidor para o cofre PDA usando TransferChecked
     let cpi_accounts = TransferChecked {
@@ -75,12 +82,9 @@ pub fn handle_invest(ctx: Context<Invest>, amount: u64) -> Result<()> {
         to: ctx.accounts.vault.to_account_info(),
         authority: ctx.accounts.investor.to_account_info(),
     };
-    
+
     // Passa a Pubkey do token_program usando .key()
-    let cpi_ctx = CpiContext::new(
-        ctx.accounts.token_program.key(),
-        cpi_accounts,
-    );
+    let cpi_ctx = CpiContext::new(ctx.accounts.token_program.key(), cpi_accounts);
 
     // Usa as decimais corretas da conta Mint
     token::transfer_checked(cpi_ctx, amount, ctx.accounts.mint.decimals)?;
@@ -104,6 +108,10 @@ pub fn handle_invest(ctx: Context<Invest>, amount: u64) -> Result<()> {
         offering.is_closed = true;
     }
 
-    msg!("Investimento de {} tokens realizado com sucesso! Total arrecadado: {}", amount, offering.raised_amount);
+    msg!(
+        "Investimento de {} tokens realizado com sucesso! Total arrecadado: {}",
+        amount,
+        offering.raised_amount
+    );
     Ok(())
 }

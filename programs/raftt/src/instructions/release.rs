@@ -1,10 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
-use crate::{
-    error::ErrorCode,
-    state::Offering,
-};
+use crate::{error::ErrorCode, state::Offering};
 
 #[derive(Accounts)]
 pub struct Release<'info> {
@@ -15,7 +12,8 @@ pub struct Release<'info> {
         mut,
         seeds = [
             b"offering",
-            authority.key().as_ref()
+            authority.key().as_ref(),
+            &offering.offering_id.to_le_bytes()
         ],
         bump = offering.bump,
         constraint = offering.authority == authority.key()
@@ -42,23 +40,23 @@ pub struct Release<'info> {
 
 pub fn handle_release(ctx: Context<Release>) -> Result<()> {
     let offering = &mut ctx.accounts.offering;
+    require!(!offering.is_failed, ErrorCode::OfferingAlreadyFailed);
 
     require!(
         offering.raised_amount >= offering.target_amount,
         ErrorCode::OfferingNotCompleted
     );
 
-    require!(
-        !offering.is_released,
-        ErrorCode::OfferingAlreadyReleased
-    );
+    require!(!offering.is_released, ErrorCode::OfferingAlreadyReleased);
 
     let authority_key = offering.authority;
+    let offering_id = offering.offering_id.to_le_bytes();
     let bump = offering.bump;
 
     let seeds = &[
         b"offering",
         authority_key.as_ref(),
+        offering_id.as_ref(),
         &[bump],
     ];
 
@@ -70,11 +68,8 @@ pub fn handle_release(ctx: Context<Release>) -> Result<()> {
         authority: offering.to_account_info(),
     };
 
-    let cpi_ctx = CpiContext::new_with_signer(
-        ctx.accounts.token_program.key(),
-        cpi_accounts,
-        signer_seeds,
-    );
+    let cpi_ctx =
+        CpiContext::new_with_signer(ctx.accounts.token_program.key(), cpi_accounts, signer_seeds);
 
     token::transfer(cpi_ctx, offering.raised_amount)?;
 

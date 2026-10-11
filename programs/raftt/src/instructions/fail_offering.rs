@@ -1,9 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::{
-    error::ErrorCode,
-    state::Offering,
-};
+use crate::{error::ErrorCode, state::Offering};
 
 #[derive(Accounts)]
 pub struct FailOffering<'info> {
@@ -11,7 +8,8 @@ pub struct FailOffering<'info> {
         mut,
         seeds = [
             b"offering",
-            authority.key().as_ref()
+            authority.key().as_ref(),
+            &offering.offering_id.to_le_bytes()
         ],
         bump = offering.bump,
         constraint = offering.authority == authority.key()
@@ -28,6 +26,7 @@ pub fn handle_fail_offering(ctx: Context<FailOffering>) -> Result<()> {
     require!(!offering.is_failed, ErrorCode::OfferingAlreadyFailed);
 
     offering.is_failed = true;
+    offering.is_closed = true;
 
     msg!("Oferta marcada como falha.");
 
