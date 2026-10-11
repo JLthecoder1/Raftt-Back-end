@@ -12,7 +12,8 @@ pub struct Release<'info> {
         mut,
         seeds = [
             b"offering",
-            authority.key().as_ref()
+            authority.key().as_ref(),
+            &offering.offering_id.to_le_bytes()
         ],
         bump = offering.bump,
         constraint = offering.authority == authority.key()
@@ -49,9 +50,15 @@ pub fn handle_release(ctx: Context<Release>) -> Result<()> {
     require!(!offering.is_released, ErrorCode::OfferingAlreadyReleased);
 
     let authority_key = offering.authority;
+    let offering_id = offering.offering_id.to_le_bytes();
     let bump = offering.bump;
 
-    let seeds = &[b"offering", authority_key.as_ref(), &[bump]];
+    let seeds = &[
+        b"offering",
+        authority_key.as_ref(),
+        offering_id.as_ref(),
+        &[bump],
+    ];
 
     let signer_seeds = &[&seeds[..]];
 

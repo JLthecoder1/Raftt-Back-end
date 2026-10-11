@@ -5,6 +5,7 @@ use anchor_lang::prelude::*;
 
 pub struct Offering {
     pub authority: Pubkey,
+    pub offering_id: u64,
     pub mint: Pubkey, // Novo: Token aceito (dólar SPL)
     pub target_amount: u64,
     pub raised_amount: u64,

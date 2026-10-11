@@ -6,3 +6,19 @@ node_modules
 test-ledger
 .yarn
 .surfpool
+
+# Node.js
+node_modules/
+
+# Segredos e credenciais
+
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*-keypair.json
+id.json
+
+# Logs e arquivos temporários
+*.log

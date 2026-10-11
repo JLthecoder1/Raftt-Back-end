@@ -15,7 +15,8 @@ pub struct Refund<'info> {
         mut,
         seeds = [
             b"offering",
-            offering.authority.as_ref()
+            offering.authority.as_ref(),
+            &offering.offering_id.to_le_bytes()
         ],
         bump = offering.bump,
         constraint = offering.is_failed @ ErrorCode::OfferingNotFailed
@@ -62,6 +63,7 @@ pub fn handle_refund(ctx: Context<Refund>) -> Result<()> {
     let seeds = &[
         b"offering",
         ctx.accounts.offering.authority.as_ref(),
+        &ctx.accounts.offering.offering_id.to_le_bytes(),
         &[ctx.accounts.offering.bump],
     ];
 

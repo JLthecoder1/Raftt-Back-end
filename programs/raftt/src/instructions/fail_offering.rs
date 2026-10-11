@@ -8,7 +8,8 @@ pub struct FailOffering<'info> {
         mut,
         seeds = [
             b"offering",
-            authority.key().as_ref()
+            authority.key().as_ref(),
+            &offering.offering_id.to_le_bytes()
         ],
         bump = offering.bump,
         constraint = offering.authority == authority.key()

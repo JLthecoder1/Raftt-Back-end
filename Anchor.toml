@@ -10,7 +10,7 @@ skip-lint = false
 raftt = "7rxcmdNRE9Ve7ocjAzG1S5LxyPxuSQ5fifhydpRJqt85"
 
 [provider]
-cluster = "localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

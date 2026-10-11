@@ -68,8 +68,11 @@ fn create_mint(svm: &mut LiteSVM, payer: &Keypair) -> Keypair {
     mint
 }
 
-fn offering_pda(user: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[b"offering", user.as_ref()], &raftt::ID)
+fn offering_pda(user: &Pubkey, offering_id: u64) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[b"offering", user.as_ref(), &offering_id.to_le_bytes()],
+        &raftt::ID,
+    )
 }
 
 fn vault_pda(offering: &Pubkey) -> (Pubkey, u8) {
@@ -81,6 +84,7 @@ fn initialize_ix(
     offering: Pubkey,
     vault: Pubkey,
     mint: Pubkey,
+    offering_id: u64,
     target_amount: u64,
 ) -> Instruction {
     Instruction {
@@ -95,7 +99,11 @@ fn initialize_ix(
             rent: RENT_SYSVAR_ID,
         }
         .to_account_metas(None),
-        data: raftt::instruction::Initialize { target_amount }.data(),
+        data: raftt::instruction::Initialize {
+            offering_id,
+            target_amount,
+        }
+        .data(),
     }
 }
 
@@ -113,8 +121,9 @@ fn test_initialize() {
     let (mut svm, payer) = setup();
 
     let target_amount: u64 = 2_000_000;
+    let offering_id = 1;
 
-    let (offering, bump) = offering_pda(&payer.pubkey());
+    let (offering, bump) = offering_pda(&payer.pubkey(), offering_id);
     let (vault, _vault_bump) = vault_pda(&offering);
 
     // Cria um Mint SPL Token real.
@@ -125,6 +134,7 @@ fn test_initialize() {
         offering,
         vault,
         mint.pubkey(),
+        offering_id,
         target_amount,
     );
 
@@ -142,6 +152,7 @@ fn test_initialize() {
     let state = raftt::state::Offering::try_deserialize(&mut account.data.as_slice()).unwrap();
 
     assert_eq!(state.authority, payer.pubkey());
+    assert_eq!(state.offering_id, offering_id);
     assert_eq!(state.mint, mint.pubkey());
     assert_eq!(state.target_amount, target_amount);
     assert_eq!(state.raised_amount, 0);
@@ -154,7 +165,8 @@ fn test_initialize() {
 fn test_initialize_twice_fails() {
     let (mut svm, payer) = setup();
 
-    let (offering, _) = offering_pda(&payer.pubkey());
+    let offering_id = 1;
+    let (offering, _) = offering_pda(&payer.pubkey(), offering_id);
     let (vault, _) = vault_pda(&offering);
 
     let mint = create_mint(&mut svm, &payer);
@@ -162,7 +174,14 @@ fn test_initialize_twice_fails() {
     let tx = tx_for(
         &svm,
         &payer,
-        initialize_ix(payer.pubkey(), offering, vault, mint.pubkey(), 2_000_000),
+        initialize_ix(
+            payer.pubkey(),
+            offering,
+            vault,
+            mint.pubkey(),
+            offering_id,
+            2_000_000,
+        ),
     );
 
     svm.send_transaction(tx).unwrap();
@@ -170,7 +189,14 @@ fn test_initialize_twice_fails() {
     let tx = tx_for(
         &svm,
         &payer,
-        initialize_ix(payer.pubkey(), offering, vault, mint.pubkey(), 3_000_000),
+        initialize_ix(
+            payer.pubkey(),
+            offering,
+            vault,
+            mint.pubkey(),
+            offering_id,
+            3_000_000,
+        ),
     );
 
     let err = svm.send_transaction(tx).unwrap_err();
@@ -190,11 +216,58 @@ fn test_initialize_twice_fails() {
 }
 
 #[test]
+fn test_initialize_two_offerings_for_same_authority() {
+    let (mut svm, payer) = setup();
+    let mint = create_mint(&mut svm, &payer);
+    let first_id = 1;
+    let second_id = 2;
+    let (first_offering, _) = offering_pda(&payer.pubkey(), first_id);
+    let (first_vault, _) = vault_pda(&first_offering);
+    let (second_offering, _) = offering_pda(&payer.pubkey(), second_id);
+    let (second_vault, _) = vault_pda(&second_offering);
+
+    for (offering, vault, offering_id, target_amount) in [
+        (first_offering, first_vault, first_id, 2_000_000),
+        (second_offering, second_vault, second_id, 3_000_000),
+    ] {
+        let tx = tx_for(
+            &svm,
+            &payer,
+            initialize_ix(
+                payer.pubkey(),
+                offering,
+                vault,
+                mint.pubkey(),
+                offering_id,
+                target_amount,
+            ),
+        );
+        svm.send_transaction(tx)
+            .expect("falha ao criar oferta com ID distinto");
+    }
+
+    for (offering, expected_id, expected_target) in [
+        (first_offering, first_id, 2_000_000),
+        (second_offering, second_id, 3_000_000),
+    ] {
+        let account = svm
+            .get_account(&offering)
+            .expect("conta offering não foi criada");
+        let state = raftt::state::Offering::try_deserialize(&mut account.data.as_slice()).unwrap();
+
+        assert_eq!(state.authority, payer.pubkey());
+        assert_eq!(state.offering_id, expected_id);
+        assert_eq!(state.target_amount, expected_target);
+    }
+}
+
+#[test]
 fn test_initialize_wrong_pda_fails() {
     let (mut svm, payer) = setup();
 
     let fake_offering = Pubkey::new_unique();
     let (vault, _) = vault_pda(&fake_offering);
+    let offering_id = 1;
 
     let mint = create_mint(&mut svm, &payer);
 
@@ -206,6 +279,7 @@ fn test_initialize_wrong_pda_fails() {
             fake_offering,
             vault,
             mint.pubkey(),
+            offering_id,
             2_000_000,
         ),
     );
@@ -226,7 +300,8 @@ fn test_initialize_wrong_pda_fails() {
 fn test_initialize_zero_target_fails() {
     let (mut svm, payer) = setup();
 
-    let (offering, _) = offering_pda(&payer.pubkey());
+    let offering_id = 1;
+    let (offering, _) = offering_pda(&payer.pubkey(), offering_id);
     let (vault, _) = vault_pda(&offering);
 
     let mint = create_mint(&mut svm, &payer);
@@ -234,7 +309,14 @@ fn test_initialize_zero_target_fails() {
     let tx = tx_for(
         &svm,
         &payer,
-        initialize_ix(payer.pubkey(), offering, vault, mint.pubkey(), 0),
+        initialize_ix(
+            payer.pubkey(),
+            offering,
+            vault,
+            mint.pubkey(),
+            offering_id,
+            0,
+        ),
     );
 
     let err = svm.send_transaction(tx).unwrap_err();
@@ -247,4 +329,31 @@ fn test_initialize_zero_target_fails() {
     );
 
     assert!(svm.get_account(&offering).is_none());
+}
+
+#[test]
+fn test_initialize_rejects_non_spl_mint() {
+    let (mut svm, payer) = setup();
+    let offering_id = 1;
+    let (offering, _) = offering_pda(&payer.pubkey(), offering_id);
+    let (vault, _) = vault_pda(&offering);
+
+    let tx = tx_for(
+        &svm,
+        &payer,
+        initialize_ix(
+            payer.pubkey(),
+            offering,
+            vault,
+            payer.pubkey(),
+            offering_id,
+            2_000_000,
+        ),
+    );
+
+    let result = svm.send_transaction(tx);
+
+    assert!(result.is_err());
+    assert!(svm.get_account(&offering).is_none());
+    assert!(svm.get_account(&vault).is_none());
 }

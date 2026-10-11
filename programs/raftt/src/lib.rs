@@ -15,8 +15,12 @@ declare_id!("7rxcmdNRE9Ve7ocjAzG1S5LxyPxuSQ5fifhydpRJqt85");
 pub mod raftt {
     use super::*;
 
-    pub fn initialize(ctx: Context<Initialize>, target_amount: u64) -> Result<()> {
-        crate::instructions::initialize::handle_initialize(ctx, target_amount)
+    pub fn initialize(
+        ctx: Context<Initialize>,
+        offering_id: u64,
+        target_amount: u64,
+    ) -> Result<()> {
+        crate::instructions::initialize::handle_initialize(ctx, offering_id, target_amount)
     }
 
     pub fn invest(ctx: Context<Invest>, amount: u64) -> Result<()> {
