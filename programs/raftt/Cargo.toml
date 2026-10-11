@@ -25,6 +25,8 @@ anchor-lang = { version = "1.2.0", features = ["init-if-needed"] }
 anchor-spl = "1.2.0"
 
 [dev-dependencies]
+solana-account = "4.7"
+solana-clock3 = { package = "solana-clock", version = "3.2" }
 litesvm = "0.17"
 solana-transaction = "4"
 solana-instruction = "4"

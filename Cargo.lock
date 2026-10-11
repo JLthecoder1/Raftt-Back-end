@@ -2065,6 +2065,8 @@ dependencies = [
  "anchor-lang",
  "anchor-spl",
  "litesvm",
+ "solana-account",
+ "solana-clock 3.2.1",
  "solana-instruction 4.0.0",
  "solana-keypair",
  "solana-pubkey 4.3.0",

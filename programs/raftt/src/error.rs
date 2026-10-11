@@ -28,4 +28,28 @@ pub enum ErrorCode {
 
     #[msg("Os fundos desta oferta já foram liberados.")]
     OfferingAlreadyReleased,
+
+    #[msg("Ação não autorizada")]
+    Unauthorized,
+
+    #[msg("Estado incompatível com a ação")]
+    InvalidState,
+
+    #[msg("Valor ou orçamento inválido")]
+    InvalidAmount,
+
+    #[msg("Prazo inválido ou ainda não alcançado")]
+    InvalidDeadline,
+
+    #[msg("Cancelamento bloqueado nas últimas 48 horas")]
+    CancellationLocked,
+
+    #[msg("Documento ou análise sem hash")]
+    MissingHash,
+
+    #[msg("Parcela fora de ordem ou já paga")]
+    InvalidMilestone,
+
+    #[msg("Overflow numérico")]
+    Overflow,
 }

@@ -6,7 +6,7 @@ skip_local_validator = true
 resolution = true
 skip-lint = false
 
-[programs.localnet]
+[programs.devnet]
 raftt = "7rxcmdNRE9Ve7ocjAzG1S5LxyPxuSQ5fifhydpRJqt85"
 
 [provider]
