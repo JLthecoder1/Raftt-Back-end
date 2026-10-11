@@ -11,7 +11,7 @@ pub use constants::*;
 pub use instructions::*;
 pub use state::*;
 
-declare_id!("5sSTJ3RXRcz8GmmtuSwq6epjJJQZagCCi3AaEwpffmhZ");
+declare_id!("7rxcmdNRE9Ve7ocjAzG1S5LxyPxuSQ5fifhydpRJqt85");
 
 #[program]
 pub mod raftt {

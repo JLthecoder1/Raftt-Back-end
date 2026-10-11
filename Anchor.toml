@@ -6,11 +6,11 @@ skip_local_validator = true
 resolution = true
 skip-lint = false
 
-[programs.localnet]
-raftt = "5sSTJ3RXRcz8GmmtuSwq6epjJJQZagCCi3AaEwpffmhZ"
+[programs.devnet]
+raftt = "7rxcmdNRE9Ve7ocjAzG1S5LxyPxuSQ5fifhydpRJqt85"
 
 [provider]
-cluster = "localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
